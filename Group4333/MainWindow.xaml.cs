@@ -9,7 +9,7 @@ namespace Group4333
 
         private void Button_Click(object sender, RoutedEventArgs e)
         {
-            var infoWindow = new GroupNumber_LastName();
+            var infoWindow = new Nurgalimov_4333();
             infoWindow.ShowDialog();
         }
     }

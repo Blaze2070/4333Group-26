@@ -8,4 +8,10 @@
     <UseWPF>true</UseWPF>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.1.0" />
+    <PackageReference Include="EPPlus" Version="8.4.2" />
+    <PackageReference Include="Npgsql" Version="10.0.1" />
+  </ItemGroup>
+
 </Project>
