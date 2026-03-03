@@ -1,22 +1,27 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
+using System.Text.Json;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using BCrypt.Net;
 using Npgsql;
 using OfficeOpenXml;
-using BCrypt.Net;
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
 
 namespace Group4333
 {
+
+    public class EmployeeData
+    {
+        public string Role { get; set; }
+        public string FIO { get; set; }
+        public string Login { get; set; }
+        public string Password { get; set; }
+    }
+
     public partial class Nurgalimov_4333 : Window
     {
         string connString = "Host=localhost;Port=5432;Database=3labIspro;Username=postgres;Password=2007;";
@@ -27,7 +32,7 @@ namespace Group4333
             ExcelPackage.License.SetNonCommercialPersonal("4333Nurgalimov");
         }
 
-        private void BtnImport_Click(object sender, RoutedEventArgs e)
+        private void BtnImportExcel_Click(object sender, RoutedEventArgs e)
         {
             var dlg = new Microsoft.Win32.OpenFileDialog();
             dlg.Filter = "Excel файлы|*.xlsx";
@@ -86,7 +91,55 @@ namespace Group4333
             }
         }
 
-        private void BtnExport_Click(object sender, RoutedEventArgs e)
+        private void BtnImportJson_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog();
+            dlg.Filter = "JSON файлы|*.json";
+            dlg.Title = "Выберите файл 5.json";
+
+            if (dlg.ShowDialog() == true)
+            {
+                try
+                {
+                    string json = File.ReadAllText(dlg.FileName);
+                    var employees = JsonSerializer.Deserialize<List<EmployeeData>>(json);
+
+                    using (var conn = new NpgsqlConnection(connString))
+                    {
+                        conn.Open();
+
+                        using (var clearCmd = new NpgsqlCommand("DELETE FROM Employees", conn))
+                        {
+                            clearCmd.ExecuteNonQuery();
+                        }
+
+                        foreach (var emp in employees)
+                        {
+                            string hashedPassword = BCrypt.Net.BCrypt.HashPassword(emp.Password);
+
+                            using (var cmd = new NpgsqlCommand(
+                                "INSERT INTO Employees (Role, Username, Login, Password) VALUES (@role, @name, @login, @pass)",
+                                conn))
+                            {
+                                cmd.Parameters.AddWithValue("@role", emp.Role);
+                                cmd.Parameters.AddWithValue("@name", emp.FIO);
+                                cmd.Parameters.AddWithValue("@login", emp.Login);
+                                cmd.Parameters.AddWithValue("@pass", hashedPassword);
+                                cmd.ExecuteNonQuery();
+                            }
+                        }
+                    }
+                    txtStatus.Text = "Импорт завершен!";
+                    MessageBox.Show($"Импорт из JSON завершен! Загружено записей: {employees.Count}", "Успех");
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Ошибка импорта JSON: " + ex.Message);
+                }
+            }
+        }
+
+        private void BtnExportExcel_Click(object sender, RoutedEventArgs e)
         {
             var dlg = new Microsoft.Win32.SaveFileDialog();
             dlg.Filter = "Excel файлы|*.xlsx";
@@ -149,8 +202,8 @@ namespace Group4333
 
                             var worksheet = package.Workbook.Worksheets.Add(sheetName);
 
-                            worksheet.Cells[1, 1].Value = "Логин";
-                            worksheet.Cells[1, 2].Value = "Пароль";
+                            worksheet.Cells[1, 1].Value = "Login";
+                            worksheet.Cells[1, 2].Value = "Password";
 
 
                             int row = 2;
@@ -176,6 +229,149 @@ namespace Group4333
                     MessageBox.Show("Ошибка экспорта: " + ex.Message);
                 }
             }
+        }
+
+        private void BtnExportWord_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.SaveFileDialog();
+            dlg.Filter = "Word файлы|*.docx";
+            dlg.FileName = "Nurgalimov4333.docx";
+
+            if (dlg.ShowDialog() == true)
+            {
+                try
+                {
+                    List<EmployeeData> employees = new List<EmployeeData>();
+
+                    using (var conn = new NpgsqlConnection(connString))
+                    {
+                        conn.Open();
+                        using (var cmd = new NpgsqlCommand(
+                            "SELECT Role, Login, Password FROM Employees ORDER BY Role", conn))
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                employees.Add(new EmployeeData
+                                {
+                                    Role = reader["Role"].ToString(),
+                                    Login = reader["Login"].ToString(),
+                                    Password = reader["Password"].ToString()
+                                });
+                            }
+                        }
+                    }
+
+                    if (employees.Count == 0)
+                    {
+                        MessageBox.Show("Нет данных для экспорта");
+                        return;
+                    }
+
+                    var groups = employees.GroupBy(e => e.Role).OrderBy(g => g.Key);
+
+                    using (WordprocessingDocument wordDoc = WordprocessingDocument.Create(dlg.FileName, WordprocessingDocumentType.Document))
+                    {
+                        MainDocumentPart mainPart = wordDoc.AddMainDocumentPart();
+                        mainPart.Document = new Document();
+                        Body body = mainPart.Document.AppendChild(new Body());
+
+                        body.AppendChild(new Paragraph());
+
+                        int groupCount = 0;
+                        foreach (var group in groups)
+                        {
+                            if (groupCount > 0)
+                            {
+                                Paragraph pageBreak = body.AppendChild(new Paragraph());
+                                Run pageBreakRun = pageBreak.AppendChild(new Run());
+                                pageBreakRun.AppendChild(new Break() { Type = BreakValues.Page });
+                            }
+
+                            Paragraph roleParagraph = body.AppendChild(new Paragraph());
+                            roleParagraph.ParagraphProperties = new ParagraphProperties();
+                            roleParagraph.ParagraphProperties.AppendChild(new Justification() { Val = JustificationValues.Center });
+
+                            Run roleRun = roleParagraph.AppendChild(new Run());
+                            roleRun.AppendChild(new Text($"Роль: {group.Key}"));
+                            roleRun.RunProperties = new RunProperties();
+                            roleRun.RunProperties.AppendChild(new Bold());
+                            roleRun.RunProperties.AppendChild(new Underline());
+
+                            body.AppendChild(new Paragraph());
+
+                            Table table = new Table();
+
+                            TableProperties tblProps = new TableProperties();
+                            TableBorders tblBorders = new TableBorders();
+                            tblBorders.TopBorder = new TopBorder() { Val = BorderValues.Single, Size = 4 };
+                            tblBorders.BottomBorder = new BottomBorder() { Val = BorderValues.Single, Size = 4 };
+                            tblBorders.LeftBorder = new LeftBorder() { Val = BorderValues.Single, Size = 4 };
+                            tblBorders.RightBorder = new RightBorder() { Val = BorderValues.Single, Size = 4 };
+                            tblBorders.InsideHorizontalBorder = new InsideHorizontalBorder() { Val = BorderValues.Single, Size = 2 };
+                            tblBorders.InsideVerticalBorder = new InsideVerticalBorder() { Val = BorderValues.Single, Size = 2 };
+                            tblProps.AppendChild(tblBorders);
+                            table.AppendChild(tblProps);
+
+                            TableRow headerRow = new TableRow();
+
+                            AddCell(headerRow, "Логин", true);
+                            AddCell(headerRow, "Пароль", true);
+
+                            table.AppendChild(headerRow);
+
+                            foreach (var emp in group)
+                            {
+                                TableRow dataRow = new TableRow();
+
+                                AddCell(dataRow, emp.Login, false);
+                                AddCell(dataRow, emp.Password, false);
+
+                                table.AppendChild(dataRow);
+                            }
+
+                            body.AppendChild(table);
+
+                            Paragraph countParagraph = body.AppendChild(new Paragraph());
+                            countParagraph.ParagraphProperties = new ParagraphProperties();
+                            countParagraph.ParagraphProperties.AppendChild(new Justification() { Val = JustificationValues.Right });
+
+                            body.AppendChild(new Paragraph());
+                            groupCount++;
+                        }
+
+                        mainPart.Document.Save();
+                    }
+
+                    txtStatus.Text = $"Экспорт в Word завершен! Файл: {dlg.FileName}";
+                    MessageBox.Show($"Экспорт в Word завершен! Файл сохранен: {dlg.FileName}", "Успех");
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Ошибка экспорта в Word: " + ex.Message);
+                }
+            }
+        }
+        private void AddCell(TableRow row, string text, bool isHeader)
+        {
+            TableCell cell = new TableCell();
+            cell.AppendChild(new Paragraph(new Run(new Text(text))));
+
+            if (isHeader)
+            {
+                cell.TableCellProperties = new TableCellProperties();
+                cell.TableCellProperties.AppendChild(new Shading()
+                {
+                    Fill = "D3D3D3",
+                    Val = ShadingPatternValues.Clear
+                });
+
+                RunProperties runProps = new RunProperties();
+                runProps.AppendChild(new Bold());
+                cell.Descendants<Run>().First().RunProperties = runProps;
+            }
+
+            row.AppendChild(cell);
         }
     }
 }

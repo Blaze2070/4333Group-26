@@ -14,24 +14,34 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Text="Импорт/Экспорт данных Excel 4333 Булат Нургалимов" 
+        <TextBlock Text="Импорт/Экспорт данных 4333 Булат Нургалимов" 
                FontSize="16" FontWeight="Bold" 
                HorizontalAlignment="Center" 
                Grid.Row="0" Margin="0,0,0,20"/>
 
         <StackPanel Grid.Row="1" Margin="0,0,0,10">
             <Button x:Name="btnImport" 
-                Content="Импорт данных" 
+                Content="Импорт Excel" 
                 Height="40" 
                 FontSize="14"
-                Click="BtnImport_Click"
+                Click="BtnImportExcel_Click"
                 Margin="0,0,0,10"/>
 
             <Button x:Name="btnExport" 
                 Content="Экспорт в Excel" 
                 Height="40" 
                 FontSize="14"
-                Click="BtnExport_Click"/>
+                Click="BtnExportExcel_Click"
+                Margin="0,0,0,10"/>
+            <Button Content="Импорт JSON"
+                    Height="40" 
+                    FontSize="14"
+                    Click="BtnImportJson_Click"
+                    Margin="0,0,0,10"/>
+            <Button Content="Экспорт Word"
+                    Height="40" 
+                    FontSize="14"
+                    Click="BtnExportWord_Click"/>
         </StackPanel>
 
         <TextBlock x:Name="txtStatus" 
